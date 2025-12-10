@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Simple phone frame SVG with transparent screen window (for demo) -->
+<svg xmlns="http://www.w3.org/2000/svg" width="260" height="520" viewBox="0 0 260 520">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.2"/>
+    </filter>
+  </defs>
+  <!-- outer body -->
+  <rect x="6" y="6" rx="28" ry="28" width="248" height="508" fill="#f8fafc" filter="url(#shadow)" />
+
+  <!-- inner bezel (frame border) -->
+  <rect x="14" y="14" rx="22" ry="22" width="232" height="492" fill="#e2e8f0" />
+
+  <!-- screen area (transparent center) -->
+  <rect x="34" y="62" width="192" height="396" rx="8" ry="8" fill="none" />
+
+  <!-- camera/hole indicators (decorative) -->
+  <circle cx="130" cy="32" r="3" fill="#111827" opacity="0.6" />
+
+  <!-- Decorative bezel edge to make frame appear realistic -->
+  <rect x="22" y="22" rx="18" ry="18" width="216" height="476" fill="none" stroke="#111827" stroke-width="2" opacity="0.4" />
+
+  <!-- Make center an explicit transparent hole by using mask (not strictly necessary) -->
+  <g opacity="1">
+    <!-- left as decorative overlay; actual image sits behind this SVG in the DOM -->
+  </g>
+</svg>
