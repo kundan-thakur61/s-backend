@@ -117,7 +117,8 @@ app.use('/api/webhooks', webhookRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/mobile', mobileRoutes);
 app.use('/api/collections', collectionRoutes);
-app.use('/api/shiprocket', shiprocketRoutes);
+app.use('/api/logistics', shiprocketRoutes);
+
 
 // Root endpoint - API information
 app.get('/', (req, res) => {
