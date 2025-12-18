@@ -88,4 +88,9 @@ router.get(
  */
 router.post('/webhook', shiprocketController.handleWebhook);
 
+// For testing: respond to GET requests on /webhook
+router.get('/webhook', (req, res) => {
+  res.status(200).json({ message: 'Shiprocket webhook endpoint is active. Use POST to send data.' });
+});
+
 module.exports = router;
