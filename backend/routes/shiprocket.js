@@ -86,11 +86,10 @@ router.get(
  * Webhook endpoint (no authentication - verified by Shiprocket)
  * This endpoint receives status updates from Shiprocket
  */
-router.post('/webhook', shiprocketController.handleWebhook);
-
-// For testing: respond to GET requests on /webhook
-router.get('/webhook', (req, res) => {
-  res.status(200).json({ message: 'Shiprocket webhook endpoint is active. Use POST to send data.' });
+router.post('/logistics-webhook', shiprocketController.handleWebhook);
+router.get('/logistics-webhook', (req, res) => {
+  res.json({ message: 'Logistics webhook endpoint is active' });
 });
+
 
 module.exports = router;
