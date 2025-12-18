@@ -1,7 +1,24 @@
+const express = require('express');
+const { body, param, validationResult } = require('express-validator');
 
-/**
- * Small async wrapper to forward errors to Express error handler
- */
+const { authMiddleware } = require('../middleware/authMiddleware');
+const { adminMiddleware } = require('../middleware/adminMiddleware');
+const { uploadLimiter } = require('../middleware/rateLimiter');
+
+const {
+  upload, // multer instance
+  uploadImage,
+  uploadBase64Image,
+  uploadProductImage,
+  uploadMockupTemplate,
+  deleteUploadedImage,
+} = require('../controllers/uploadController');
+
+const router = express.Router();
+
+/* -----------------------------
+   Async handler (safe wrapper)
+-------------------------------- */
 const asyncHandler = (fn) => async (req, res, next) => {
   try {
     const result = await fn(req, res, next);
@@ -13,84 +30,67 @@ const asyncHandler = (fn) => async (req, res, next) => {
   }
 };
 
-const express = require('express');
-const { body, param, validationResult } = require('express-validator');
-const { authMiddleware } = require('../middleware/authMiddleware');
-const { adminMiddleware } = require('../middleware/adminMiddleware');
-const { uploadLimiter } = require('../middleware/rateLimiter');
-
-const router = express.Router();
-
-const {
-  upload, // multer instance from your controller (keeps existing behavior)
-  uploadImage,
-  uploadBase64Image,
-  uploadProductImage,
-  uploadMockupTemplate,
-  deleteUploadedImage
-} = require('../controllers/uploadController');
-/**
- * Upload theme poster image (admin only)
- * - expects themeId in body
- * - single file field 'image'
- */
-// Removed themeController import and theme-poster route
-
-/**
- * Validation result handler middleware
- */
+/* -----------------------------
+   Validation handler
+-------------------------------- */
 const handleValidation = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    // send first error in a consistent shape
-    return res.status(422).json({ error: errors.array()[0].msg, details: errors.array() });
+    return res.status(422).json({
+      success: false,
+      error: errors.array()[0].msg,
+      details: errors.array(),
+    });
   }
   next();
 };
 
-/**
- * Utility validator for Mongo ObjectId (simple check)
- */
-const isObjectId = value => /^[0-9a-fA-F]{24}$/.test(value);
+/* -----------------------------
+   ObjectId validator
+-------------------------------- */
+const isObjectId = (value) => /^[0-9a-fA-F]{24}$/.test(value);
 
-/* -------------------------
-   Routes
-   ------------------------- */
+/* =====================================================
+   ROUTES
+===================================================== */
 
 /**
- * Upload single image (authenticated users)
- * - rate limited
+ * Upload image(s)
+ * - Auth required
+ * - Rate limited
+ * - Accepts:
+ *   field "image"  (single)
+ *   field "images" (multiple)
  */
 router.post(
   '/image',
   authMiddleware,
   uploadLimiter,
-  // accept both `image` (single) and `images` (array) field names from frontend
   upload.fields([
     { name: 'image', maxCount: 1 },
-    { name: 'images', maxCount: 10 }
+    { name: 'images', maxCount: 10 },
   ]),
   asyncHandler(uploadImage)
 );
 
 /**
- * Upload base64 image (for custom designs)
- * - validates that body.image exists and is a non-empty string
- * - rate limited
+ * Upload base64 image (custom designs)
  */
 router.post(
   '/base64',
   authMiddleware,
   uploadLimiter,
-  body('image').isString().trim().notEmpty().withMessage('image (base64) is required'),
+  body('image')
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage('image (base64) is required'),
   handleValidation,
   asyncHandler(uploadBase64Image)
 );
 
 /**
- * Upload product variant image (admin only)
- * - validate productId & variantId
- * - single file field 'image'
+ * Upload product variant image (ADMIN)
  */
 router.post(
   '/product/:productId/variant/:variantId',
@@ -98,19 +98,17 @@ router.post(
   adminMiddleware,
   param('productId')
     .custom(isObjectId)
-    .withMessage('Invalid productId format'),
+    .withMessage('Invalid productId'),
   param('variantId')
     .custom(isObjectId)
-    .withMessage('Invalid variantId format'),
+    .withMessage('Invalid variantId'),
   handleValidation,
   upload.single('image'),
   asyncHandler(uploadProductImage)
 );
 
 /**
- * Upload mockup template (admin only)
- * - validate productId
- * - single file field 'mockup'
+ * Upload mockup template (ADMIN)
  */
 router.post(
   '/mockup/:productId',
@@ -118,20 +116,23 @@ router.post(
   adminMiddleware,
   param('productId')
     .custom(isObjectId)
-    .withMessage('Invalid productId format'),
+    .withMessage('Invalid productId'),
   handleValidation,
   upload.single('mockup'),
   asyncHandler(uploadMockupTemplate)
 );
 
 /**
- * Delete uploaded image
- * - validate publicId param (non-empty)
+ * Delete uploaded image (Cloudinary)
+ * publicId must be URL-encoded from frontend
  */
 router.delete(
   '/:publicId',
   authMiddleware,
-  param('publicId').trim().notEmpty().withMessage('publicId is required'),
+  param('publicId')
+    .trim()
+    .notEmpty()
+    .withMessage('publicId is required'),
   handleValidation,
   asyncHandler(deleteUploadedImage)
 );

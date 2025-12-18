@@ -1,26 +1,18 @@
 // controllers/uploadController.js
 const multer = require('multer');
 const path = require('path');
-const { uploadFromBuffer, uploadFromBase64, deleteImage } = require('../utils/cloudinary');
-const { resolveUploadsDir } = require('../utils/uploadsDir');
+const {
+  uploadFromBuffer,
+  uploadFromBase64,
+  deleteImage
+} = require('../utils/cloudinary');
 const Product = require('../models/Product');
-
-const uploadsDir = resolveUploadsDir();
 
 /**
  * Multer configuration
- * - memoryStorage keeps files in memory buffers (good for uploading to cloud)
- * - change to diskStorage if you want to store locally
+ * - memoryStorage is REQUIRED for Cloudinary
  */
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadsDir);
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + '-' + file.originalname);
-  }
-});
+const storage = multer.memoryStorage();
 
 const allowedMimeTypes = [
   'image/jpeg',
@@ -37,13 +29,17 @@ const allowedExt = /jpeg|jpg|png|webp|gif|svg|heic|heif/;
 
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB per file
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname || '').toLowerCase();
-    const ok = allowedMimeTypes.includes(file.mimetype) && allowedExt.test(ext);
+    const ok =
+      allowedMimeTypes.includes(file.mimetype) &&
+      allowedExt.test(ext);
 
     if (!ok) {
-      const err = new Error('Unsupported file type. Allowed: jpg, jpeg, png, webp, gif, svg, heic, heif');
+      const err = new Error(
+        'Unsupported file type. Allowed: jpg, jpeg, png, webp, gif, svg, heic, heif'
+      );
       err.statusCode = 400;
       return cb(err);
     }
@@ -52,45 +48,43 @@ const upload = multer({
   }
 });
 
-/**
- * NOTE:
- * Each exported controller returns a plain object (or throws).
- * The router is responsible for sending HTTP responses.
- *
- * Implement real upload/delete logic where the TODO comments are.
- */
-
+/* =====================================================
+   UPLOAD NORMAL IMAGE(S) → CLOUDINARY
+   ===================================================== */
 async function uploadImage(req) {
-  // Debug: log incoming files and body
-  console.log('uploadImage: req.files =', req.files);
-  console.log('uploadImage: req.body =', req.body);
-  if (req.fileValidationError) {
-    const err = new Error(req.fileValidationError);
-    err.statusCode = 400;
-    throw err;
-  }
-  // Support both single (image) and multiple (images) field names
-  const fromArray = Array.isArray(req.files) ? req.files : [];
-  const fromFields = req.files && typeof req.files === 'object'
-    ? [...(req.files.images || []), ...(req.files.image || [])]
+  const fromFields =
+    req.files && typeof req.files === 'object'
+      ? [...(req.files.images || []), ...(req.files.image || [])]
+      : [];
+
+  const files = fromFields.length
+    ? fromFields
+    : req.file
+    ? [req.file]
     : [];
-  const files = fromFields.length ? fromFields : (fromArray.length ? fromArray : (req.file ? [req.file] : []));
 
   if (!files.length) {
-    const err = new Error('No files uploaded. Ensure form field name is "image" or "images".');
+    const err = new Error(
+      'No files uploaded. Field name must be "image" or "images".'
+    );
     err.statusCode = 400;
     throw err;
   }
 
-  // Save file info for local storage
-  const uploadedFiles = files.map((file) => {
-    return {
+  const uploadedFiles = [];
+
+  for (const file of files) {
+    const result = await uploadFromBuffer(file.buffer, {
+      folder: 'uploads'
+    });
+
+    uploadedFiles.push({
       originalname: file.originalname,
       size: file.size,
-      url: `/uploads/${file.filename}`,
-      localPath: path.join(uploadsDir, file.filename)
-    };
-  });
+      url: result.secure_url,
+      publicId: result.public_id
+    });
+  }
 
   return {
     count: uploadedFiles.length,
@@ -98,48 +92,74 @@ async function uploadImage(req) {
   };
 }
 
+/* =====================================================
+   UPLOAD BASE64 IMAGE (CANVAS / CUSTOM DESIGN)
+   ===================================================== */
 async function uploadBase64Image(req) {
-  const dataUri = (req.body && req.body.image) || '';
-  if (!dataUri) throw new Error('No image provided');
+  const dataUri = req.body?.image;
+  if (!dataUri) {
+    const err = new Error('No image (base64) provided');
+    err.statusCode = 400;
+    throw err;
+  }
 
-  // Basic data URI parse: data:<mime>;base64,<payload>
-  const matches = dataUri.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
-  if (!matches) throw new Error('Invalid data URI');
+  const matches = dataUri.match(
+    /^data:(image\/[a-zA-Z]+);base64,(.+)$/
+  );
+  if (!matches) {
+    const err = new Error('Invalid base64 image format');
+    err.statusCode = 400;
+    throw err;
+  }
 
-  const mimeType = matches[1];
-  const base64Data = matches[2];
-  const buffer = Buffer.from(base64Data, 'base64');
+  const buffer = Buffer.from(matches[2], 'base64');
 
-  const result = await uploadFromBase64(dataUri, { folder: 'custom-designs' });
+  const result = await uploadFromBase64(dataUri, {
+    folder: 'custom-designs'
+  });
 
   return {
-    mimeType,
     size: buffer.length,
     url: result.secure_url,
     publicId: result.public_id
   };
 }
 
+/* =====================================================
+   UPLOAD PRODUCT VARIANT IMAGE (ADMIN)
+   ===================================================== */
 async function uploadProductImage(req) {
   const { productId, variantId } = req.params;
   const file = req.file;
-  if (!file) throw new Error('No image uploaded (field name should be "image")');
 
-  // Upload to Cloudinary
-  const result = await uploadFromBuffer(file.buffer, { folder: 'product-images' });
+  if (!file) {
+    const err = new Error('No image uploaded (field name should be "image")');
+    err.statusCode = 400;
+    throw err;
+  }
 
-  // Find and update the product variant
+  const result = await uploadFromBuffer(file.buffer, {
+    folder: 'product-images'
+  });
+
   const product = await Product.findById(productId);
-  if (!product) throw new Error('Product not found');
+  if (!product) {
+    const err = new Error('Product not found');
+    err.statusCode = 404;
+    throw err;
+  }
 
   const variant = product.variants.id(variantId);
-  if (!variant) throw new Error('Variant not found');
+  if (!variant) {
+    const err = new Error('Variant not found');
+    err.statusCode = 404;
+    throw err;
+  }
 
-  // Add image to variant
   variant.images.push({
     url: result.secure_url,
     publicId: result.public_id,
-    isPrimary: variant.images.length === 0 // First image is primary by default
+    isPrimary: variant.images.length === 0
   });
 
   await product.save();
@@ -149,28 +169,54 @@ async function uploadProductImage(req) {
     size: file.size,
     url: result.secure_url,
     publicId: result.public_id,
-    variantId: variantId
+    variantId
   };
 }
 
+/* =====================================================
+   UPLOAD MOCKUP TEMPLATE (ADMIN)
+   ===================================================== */
 async function uploadMockupTemplate(req) {
   const file = req.file;
-  if (!file) throw new Error('No mockup uploaded (field name should be "mockup")');
+  if (!file) {
+    const err = new Error('No mockup uploaded (field name should be "mockup")');
+    err.statusCode = 400;
+    throw err;
+  }
 
-  // TODO: upload `file.buffer` and save template metadata in DB
-  return { originalname: file.originalname, size: file.size };
+  const result = await uploadFromBuffer(file.buffer, {
+    folder: 'mockups'
+  });
+
+  return {
+    originalname: file.originalname,
+    size: file.size,
+    url: result.secure_url,
+    publicId: result.public_id
+  };
 }
 
+/* =====================================================
+   DELETE IMAGE FROM CLOUDINARY
+   ===================================================== */
 async function deleteUploadedImage(req) {
-  const publicId = req.params.publicId;
-  if (!publicId) throw new Error('publicId required');
+  const { publicId } = req.params;
+  if (!publicId) {
+    const err = new Error('publicId is required');
+    err.statusCode = 400;
+    throw err;
+  }
 
-  // TODO: delete from storage (Cloudinary/S3) and remove DB record if any
-  return { deleted: true, publicId };
+  await deleteImage(publicId);
+
+  return {
+    deleted: true,
+    publicId
+  };
 }
 
 module.exports = {
-  upload, // multer instance (important)
+  upload,
   uploadImage,
   uploadBase64Image,
   uploadProductImage,
