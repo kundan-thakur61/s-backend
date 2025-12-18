@@ -25,6 +25,7 @@ const webhookRoutes = require('./routes/webhooks');
 const wishlistRoutes = require('./routes/wishlist');
 const mobileRoutes = require('./routes/mobile');
 const collectionRoutes = require('./routes/collections');
+const shiprocketRoutes = require('./routes/shiprocket');
 
 const app = express();
 const frontendBuildPath = path.join(__dirname, '../frontend/dist');
@@ -116,6 +117,7 @@ app.use('/api/webhooks', webhookRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/mobile', mobileRoutes);
 app.use('/api/collections', collectionRoutes);
+app.use('/api/shiprocket', shiprocketRoutes);
 
 // Root endpoint - API information
 app.get('/', (req, res) => {
@@ -134,6 +136,7 @@ app.get('/', (req, res) => {
       wishlist: '/api/wishlist',
       mobile: '/api/mobile',
       collections: '/api/collections',
+      shiprocket: '/api/shiprocket',
       admin: '/api/admin',
       webhooks: '/api/webhooks'
     },

@@ -73,6 +73,41 @@ const orderSchema = new mongoose.Schema({
   estimatedDelivery: Date,
   notes: String,
   cancellationReason: String,
+  // Shiprocket integration fields
+  shiprocket: {
+    shipmentId: Number,
+    orderId: Number,
+    awbCode: String,
+    courierId: Number,
+    courierName: String,
+    pickupScheduledDate: Date,
+    labelUrl: String,
+    manifestUrl: String,
+    status: String,
+    statusCode: Number,
+    onHoldReason: String,
+    rtoReason: String,
+    lastSyncedAt: Date,
+    trackingData: {
+      currentStatus: String,
+      shipmentStatus: String,
+      shipmentTrack: [{
+        status: String,
+        date: Date,
+        location: String,
+        activity: String
+      }],
+      pickupDate: Date,
+      deliveryDate: Date,
+      expectedDeliveryDate: Date,
+      weight: Number,
+      dimensions: {
+        length: Number,
+        breadth: Number,
+        height: Number
+      }
+    }
+  },
   refundAmount: Number,
   refundStatus: {
     type: String,

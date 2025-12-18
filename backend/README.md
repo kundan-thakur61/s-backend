@@ -9,7 +9,8 @@ A complete Node.js backend for a custom mobile cover e-commerce platform with au
 - 🛒 **Order System** - Complete order processing with Razorpay integration
 - 🎨 **Custom Designs** - Upload and manage custom mobile cover designs
 - 💳 **Payment Processing** - Razorpay integration with webhook support
-- 📊 **Admin Panel** - Comprehensive admin dashboard for order management
+- � **Shipping Integration** - Shiprocket API integration for automated shipping and tracking
+- �📊 **Admin Panel** - Comprehensive admin dashboard for order management
 - 🖼️ **Image Uploads** - Cloudinary integration for image storage
 - 🧪 **Testing** - Comprehensive test suite with Jest
 - 📚 **Documentation** - Complete API documentation with Postman collection
@@ -24,6 +25,7 @@ A complete Node.js backend for a custom mobile cover e-commerce platform with au
 - **Razorpay** - Payment gateway
 - **Cloudinary** - Image storage
 - **Multer** - File upload handling
+- **Shiprocket** - Shipping and logistics integration
 - **Winston** - Logging
 - **Jest & Supertest** - Testing framework
 
@@ -33,6 +35,7 @@ A complete Node.js backend for a custom mobile cover e-commerce platform with au
 - MongoDB (v4.0 or higher)
 - Cloudinary account
 - Razorpay account
+- Shiprocket account (for shipping features)
 
 ## Installation
 
@@ -166,6 +169,26 @@ Public endpoint to fetch active theme for clients:
 
 ### Webhooks
 - `POST /api/webhooks/razorpay` - Razorpay webhook endpoint
+
+### Shiprocket (Shipping)
+**Public Endpoints:**
+- `GET /api/shiprocket/track/:orderId` - Track shipment (authenticated users)
+- `GET /api/shiprocket/check-serviceability` - Check delivery serviceability
+
+**Admin Endpoints:**
+- `POST /api/shiprocket/create-shipment` - Create shipment in Shiprocket
+- `POST /api/shiprocket/assign-courier` - Assign courier and generate AWB
+- `GET /api/shiprocket/recommended-couriers/:orderId` - Get available couriers
+- `POST /api/shiprocket/request-pickup` - Request courier pickup
+- `POST /api/shiprocket/cancel-shipment` - Cancel shipment
+- `POST /api/shiprocket/generate-label` - Generate shipping label
+- `POST /api/shiprocket/generate-manifest` - Generate manifest for multiple orders
+- `GET /api/shiprocket/pickup-locations` - Get configured pickup locations
+
+**Webhook:**
+- `POST /api/shiprocket/webhook` - Receive status updates from Shiprocket
+
+See [SHIPROCKET_INTEGRATION.md](./SHIPROCKET_INTEGRATION.md) for detailed documentation.
 
 ## Testing
 
