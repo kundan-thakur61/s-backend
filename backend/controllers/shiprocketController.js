@@ -585,10 +585,14 @@ const handleWebhook = async (req, res, next) => {
 
     // Extract order ID from webhook (format: ORD-xxxxx or CUST-xxxxx)
     const orderIdFromShiprocket = webhookData.order_id;
-    if (!orderIdFromShiprocket) {
-      return res.status(400).json({
-        success: false,
-        message: 'Order ID not found in webhook'
+    
+    // Handle test webhooks from ShipRocket
+    if (!orderIdFromShiprocket || orderIdFromShiprocket === 'test' || orderIdFromShiprocket.includes('test')) {
+      logger.info('Test webhook received from ShipRocket');
+      return res.json({
+        success: true,
+        message: 'Test webhook acknowledged successfully',
+        isTest: true
       });
     }
 
