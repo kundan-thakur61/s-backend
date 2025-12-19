@@ -136,5 +136,6 @@ router.delete(
   handleValidation,
   asyncHandler(deleteUploadedImage)
 );
+ 
 
 module.exports = router;

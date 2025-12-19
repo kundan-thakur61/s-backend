@@ -117,6 +117,7 @@ async function uploadBase64Image(req) {
   const result = await uploadFromBase64(dataUri, {
     folder: 'custom-designs'
   });
+  
 
   return {
     size: buffer.length,

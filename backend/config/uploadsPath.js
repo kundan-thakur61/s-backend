@@ -8,6 +8,7 @@ const envUploadsDir = process.env.UPLOADS_DIR ? path.resolve(process.env.UPLOADS
 const candidateDirs = [envUploadsDir, defaultUploadsDir].filter(Boolean);
 
 let uploadsDir;
+   
 
 for (const dir of candidateDirs) {
   try {

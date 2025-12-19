@@ -83,5 +83,5 @@ module.exports = {
   uploadFromBuffer,
   uploadFromBase64,
   deleteImage,
-  getTransformedUrl
+  getTransformedUrl 
 };
