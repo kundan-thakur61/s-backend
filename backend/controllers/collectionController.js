@@ -3,6 +3,7 @@ const path = require('path');
 const mongoose = require('mongoose');
 const Collection = require('../models/Collection');
 const logger = require('../utils/logger');
+const { uploadFromBuffer } = require('../utils/cloudinary');
 
 const uploadsDir = path.join(__dirname, '../public/uploads');
 
@@ -27,6 +28,39 @@ const parseBoolean = (value) => {
 
 const isObjectId = (value = '') => mongoose.Types.ObjectId.isValid(value);
 
+const cleanUrl = (u) => {
+  if (!u) return '';
+  if (typeof u !== 'string') return '';
+  const v = u.trim();
+  if (!v) return '';
+  // normalize obvious invalid uploads path
+  if (v === '/uploads/undefined' || v.endsWith('/undefined') || v.includes('/uploads/undefined')) return '';
+  return v;
+};
+
+const sanitizeCollectionForClient = (doc) => {
+  if (!doc) return doc;
+  const obj = doc.toObject ? doc.toObject() : JSON.parse(JSON.stringify(doc));
+  // heroImage may be { url, publicId } or a string in some code paths
+  if (!obj.heroImage) obj.heroImage = { url: '' };
+  if (typeof obj.heroImage === 'string') {
+    obj.heroImage = { url: cleanUrl(obj.heroImage) };
+  } else {
+    obj.heroImage.url = cleanUrl(obj.heroImage.url);
+  }
+
+  if (Array.isArray(obj.images)) {
+    obj.images = obj.images.map((img) => ({
+      ...img,
+      url: cleanUrl(img?.url || img?.secure_url || img?.path || img?.publicUrl || ''),
+    }));
+  } else {
+    obj.images = [];
+  }
+
+  return obj;
+};
+
 const findCollectionByIdentifier = async (identifier) => {
   if (!identifier) return null;
   if (isObjectId(identifier)) {
@@ -46,7 +80,8 @@ const listCollectionsPublic = async (req, res, next) => {
       if (handle) query.handle = handle;
     }
     const items = await Collection.find(query).sort({ sortOrder: 1, createdAt: -1 });
-    res.json({ success: true, data: { collections: items } });
+    const safe = items.map(sanitizeCollectionForClient);
+    res.json({ success: true, data: { collections: safe } });
   } catch (err) {
     logger.error('listCollectionsPublic', err);
     next(err);
@@ -61,7 +96,8 @@ const listCollectionsAdmin = async (req, res, next) => {
       query.isActive = activeFilter;
     }
     const items = await Collection.find(query).sort({ sortOrder: 1, createdAt: -1 });
-    res.json({ success: true, data: { collections: items } });
+    const safe = items.map(sanitizeCollectionForClient);
+    res.json({ success: true, data: { collections: safe } });
   } catch (err) {
     logger.error('listCollectionsAdmin', err);
     next(err);
@@ -75,7 +111,7 @@ const getCollectionByHandle = async (req, res, next) => {
     if (!collection) {
       return res.status(404).json({ success: false, message: 'Collection not found' });
     }
-    res.json({ success: true, data: { collection } });
+    res.json({ success: true, data: { collection: sanitizeCollectionForClient(collection) } });
   } catch (err) {
     logger.error('getCollectionByHandle', err);
     next(err);
@@ -116,7 +152,7 @@ const createCollection = async (req, res, next) => {
 
     const created = new Collection(payload);
     await created.save();
-    res.status(201).json({ success: true, data: created });
+    res.status(201).json({ success: true, data: sanitizeCollectionForClient(created) });
   } catch (err) {
     logger.error('createCollection', err);
     next(err);
@@ -159,7 +195,7 @@ const updateCollection = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Collection not found' });
     }
 
-    res.json({ success: true, data: updated });
+    res.json({ success: true, data: sanitizeCollectionForClient(updated) });
   } catch (err) {
     logger.error('updateCollection', err);
     next(err);
@@ -190,7 +226,7 @@ const deleteCollection = async (req, res, next) => {
       }
     }));
 
-    res.json({ success: true, data: doc });
+    res.json({ success: true, data: sanitizeCollectionForClient(doc) });
   } catch (err) {
     logger.error('deleteCollection', err);
     next(err);
@@ -199,8 +235,8 @@ const deleteCollection = async (req, res, next) => {
 
 const mapFilesToImages = (files = [], captions = []) => (
   files.map((file, index) => ({
-    url: `/uploads/${file.filename}`,
-    publicId: file.filename,
+    url: file && file.filename ? `/uploads/${file.filename}` : '',
+    publicId: file && (file.filename || file.originalname) ? (file.filename || file.originalname) : '',
     caption: Array.isArray(captions) ? (captions[index] || '') : captions,
     sortOrder: index,
   }))
@@ -236,15 +272,30 @@ const addCollectionImages = async (req, res, next) => {
 
     const captions = resolveCaptions(req.body.captions);
     const startIndex = collection.images.length;
-    const payload = mapFilesToImages(files, captions).map((img, idx) => ({
-      ...img,
-      sortOrder: startIndex + idx,
-    }));
+
+    // Upload each file buffer to Cloudinary and build image objects from results
+    const payload = [];
+    for (let i = 0; i < files.length; i += 1) {
+      const file = files[i];
+      // Ensure we have a buffer to upload
+      if (!file || !file.buffer) {
+        throw new Error('Invalid file upload payload');
+      }
+
+      const result = await uploadFromBuffer(file.buffer, { folder: 'uploads' });
+
+      payload.push({
+        url: result.secure_url || `/uploads/${file.filename || ''}`,
+        publicId: result.public_id || file.filename || file.originalname || '',
+        caption: Array.isArray(captions) ? (captions[i] || '') : captions,
+        sortOrder: startIndex + i,
+      });
+    }
 
     collection.images.push(...payload);
     await collection.save();
 
-    res.status(201).json({ success: true, data: collection });
+    res.status(201).json({ success: true, data: sanitizeCollectionForClient(collection) });
   } catch (err) {
     logger.error('addCollectionImages', err);
     next(err);

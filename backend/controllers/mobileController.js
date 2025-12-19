@@ -7,6 +7,24 @@ const ThemeCategory = require('../models/ThemeCategory');
 const logger = require('../utils/logger');
 const uploadsDir = path.join(__dirname, '../public/uploads');
 
+const cleanUrl = (u) => {
+  if (!u) return '';
+  if (typeof u !== 'string') return '';
+  const v = u.trim();
+  if (!v) return '';
+  if (v === '/uploads/undefined' || v.endsWith('/undefined') || v.includes('/uploads/undefined')) return '';
+  return v;
+};
+
+const sanitizeModelForClient = (doc) => {
+  if (!doc) return doc;
+  const obj = doc.toObject ? doc.toObject() : JSON.parse(JSON.stringify(doc));
+  if (Array.isArray(obj.images)) {
+    obj.images = obj.images.map((img) => ({ ...img, url: cleanUrl(img?.url) }));
+  } else obj.images = [];
+  return obj;
+};
+
 const DEFAULT_THEME_CATEGORY = 'General';
 
 const slugify = (value = '') => (
@@ -185,7 +203,7 @@ const createModel = async (req, res, next) => {
     const m = new MobileModel({ name: name.trim(), company, description: description || '', images: images || [], specs: specs || {} });
     await m.save();
     const populated = await m.populate('company', 'name slug');
-    res.status(201).json({ success: true, data: populated });
+    res.status(201).json({ success: true, data: sanitizeModelForClient(populated) });
   } catch (err) {
     logger.error('createModel', err);
     next(err);
@@ -199,19 +217,21 @@ const updateModel = async (req, res, next) => {
     ['name','company','description','images','specs'].forEach(k => { if (req.body[k] !== undefined) payload[k] = req.body[k]; });
     const updated = await MobileModel.findByIdAndUpdate(id, payload, { new: true }).populate('company', 'name slug');
     if (!updated) return res.status(404).json({ success: false, message: 'Model not found' });
-    res.json({ success: true, data: updated });
+    res.json({ success: true, data: sanitizeModelForClient(updated) });
   } catch (err) {
     logger.error('updateModel', err);
     next(err);
   }
 };
 
+const { uploadFromBuffer } = require('../utils/cloudinary');
+
 const deleteModel = async (req, res, next) => {
   try {
     const { id } = req.params;
     const r = await MobileModel.findByIdAndDelete(id);
     if (!r) return res.status(404).json({ success: false, message: 'Model not found' });
-    res.json({ success: true, data: r });
+    res.json({ success: true, data: sanitizeModelForClient(r) });
   } catch (err) {
     logger.error('deleteModel', err);
     next(err);
@@ -226,14 +246,19 @@ const addModelFrames = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'At least one frame image is required' });
     }
 
-    const newFrames = files.map((file) => ({
-      url: `/uploads/${file.filename}`,
-      publicId: file.filename
-    }));
+    const payload = [];
+    for (let i = 0; i < files.length; i += 1) {
+      const file = files[i];
+      if (!file || !file.buffer) {
+        throw new Error('Invalid file upload payload');
+      }
+      const result = await uploadFromBuffer(file.buffer, { folder: 'frames' });
+      payload.push({ url: result.secure_url || '', publicId: result.public_id || '' });
+    }
 
     const updated = await MobileModel.findByIdAndUpdate(
       id,
-      { $push: { images: { $each: newFrames } } },
+      { $push: { images: { $each: payload } } },
       { new: true }
     ).populate('company', 'name slug');
 
@@ -242,7 +267,7 @@ const addModelFrames = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Model not found' });
     }
 
-    res.status(201).json({ success: true, data: updated });
+    res.status(201).json({ success: true, data: sanitizeModelForClient(updated) });
   } catch (err) {
     logger.error('addModelFrames', err);
     next(err);
@@ -279,7 +304,7 @@ const removeModelFrame = async (req, res, next) => {
       }
     }
 
-    res.json({ success: true, data: model });
+    res.json({ success: true, data: sanitizeModelForClient(model) });
   } catch (err) {
     logger.error('removeModelFrame', err);
     next(err);

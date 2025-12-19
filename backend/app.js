@@ -13,6 +13,8 @@ const { resolveUploadsDir, defaultUploadsPath } = require('./utils/uploadsDir');
 
 const uploadsDir = resolveUploadsDir();
 
+
+
 // Import routes
 const authRoutes = require('./routes/auth');
 const productRoutes = require('./routes/products');
@@ -28,6 +30,15 @@ const collectionRoutes = require('./routes/collections');
 const shiprocketRoutes = require('./routes/shiprocket');
 
 const app = express();
+
+// Short-circuit and log requests for missing/undefined upload paths (bots or bad clients)
+app.use((req, res, next) => {
+  if (req.path.startsWith('/uploads/undefined') || req.path.startsWith('/api/uploads/undefined')) {
+    logger.warn(`Blocked request to ${req.path} - referer=${req.get('referer') || req.get('referrer') || ''} ua=${req.get('user-agent') || ''}`);
+    return res.status(404).send('Not Found');
+  }
+  return next();
+});
 const frontendBuildPath = path.join(__dirname, '../frontend/dist');
 
 // Render and other managed hosts sit behind a proxy and forward client IPs
