@@ -97,6 +97,7 @@ app.use('/api', (req, res, next) => {
 // Rate limiting (centralized in middleware/rateLimiter)
 app.use('/api/', generalLimiter);
 app.use('/api/auth/', authLimiter);
+app.use('/api/payment', require('./routes/paymentRoutes'));
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
@@ -118,6 +119,7 @@ app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/mobile', mobileRoutes);
 app.use('/api/collections', collectionRoutes);
 app.use('/api/logistics', shiprocketRoutes);
+
 
 
 // Root endpoint - API information
