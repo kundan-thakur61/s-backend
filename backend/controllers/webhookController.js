@@ -286,6 +286,110 @@ const handleOrderPaid = async (payload) => {
   }
 };
 
+const handleShiprocketWebhook = async (req, res, next) => {
+  try {
+    const token = req.headers['x-api-key'];
+    const webhookSecret = process.env.SHIPROCKET_WEBHOOK_SECRET;
+
+    if (token !== webhookSecret) {
+      logger.error('Invalid Shiprocket webhook token');
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized'
+      });
+    }
+
+    const payload = req.body;
+    logger.info('Shiprocket webhook received:', { 
+      event: payload.shipment_status || payload.status,
+      shipmentId: payload.shipment_id || payload.id
+    });
+
+    await handleShiprocketStatusUpdate(payload);
+
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Shiprocket webhook error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+const handleShiprocketStatusUpdate = async (payload) => {
+  try {
+    const shipmentId = payload.shipment_id || payload.id;
+    const awbCode = payload.awb_code || payload.awb;
+    const status = payload.shipment_status || payload.status;
+    const currentStatus = payload.current_status || payload.shipment_status;
+    
+    let order;
+    
+    if (shipmentId) {
+      order = await Order.findOne({ 'shiprocket.shipmentId': shipmentId });
+    } else if (awbCode) {
+      order = await Order.findOne({ 'shiprocket.awbCode': awbCode });
+    }
+
+    if (!order) {
+      logger.warn('Shiprocket webhook: Order not found', { shipmentId, awbCode });
+      return;
+    }
+
+    order.shiprocket.status = status;
+    order.shiprocket.lastSyncedAt = new Date();
+
+    if (payload.current_status) {
+      order.shiprocket.trackingData.currentStatus = payload.current_status;
+    }
+
+    if (payload.shipment_status) {
+      order.shiprocket.trackingData.shipmentStatus = payload.shipment_status;
+    }
+
+    if (payload.pickup_date) {
+      order.shiprocket.trackingData.pickupDate = new Date(payload.pickup_date);
+    }
+
+    if (payload.delivered_date) {
+      order.shiprocket.trackingData.deliveryDate = new Date(payload.delivered_date);
+    }
+
+    const statusLower = (status || currentStatus || '').toLowerCase();
+    
+    if (statusLower.includes('delivered')) {
+      order.status = 'delivered';
+    } else if (statusLower.includes('shipped') || statusLower.includes('in transit') || statusLower.includes('out for delivery')) {
+      order.status = 'shipped';
+    } else if (statusLower.includes('rto') || statusLower.includes('return')) {
+      order.shiprocket.rtoReason = payload.rto_reason || 'Return initiated';
+    } else if (statusLower.includes('cancelled')) {
+      order.status = 'cancelled';
+      order.cancellationReason = payload.reason || 'Cancelled by courier';
+    }
+
+    if (payload.activities && Array.isArray(payload.activities)) {
+      order.shiprocket.trackingData.shipmentTrack = payload.activities.map(activity => ({
+        status: activity.status || activity.activity,
+        date: activity.date ? new Date(activity.date) : new Date(),
+        location: activity.location || '',
+        activity: activity.activity || activity.status || ''
+      }));
+    }
+
+    await order.save();
+
+    logger.info('Order updated from Shiprocket webhook:', {
+      orderId: order._id,
+      shipmentId,
+      status: order.status,
+      shiprocketStatus: order.shiprocket.status
+    });
+  } catch (error) {
+    logger.error('Error handling Shiprocket status update:', error);
+    throw error;
+  }
+};
+
 module.exports = {
-  handleRazorpayWebhook
+  handleRazorpayWebhook,
+  handleShiprocketWebhook
 };
