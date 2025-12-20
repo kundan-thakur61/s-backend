@@ -75,7 +75,7 @@ const orderSchema = new mongoose.Schema({
   cancellationReason: String,
   // Shiprocket integration fields
   shiprocket: {
-    shipmentId: Number,
+    shipmentId: { type: Number, unique: true, sparse: true },
     orderId: Number,
     awbCode: String,
     courierId: Number,
@@ -124,6 +124,9 @@ orderSchema.index({ userId: 1, createdAt: -1 });
 orderSchema.index({ status: 1, createdAt: -1 });
 orderSchema.index({ 'payment.razorpayOrderId': 1 });
 orderSchema.index({ 'payment.razorpayPaymentId': 1 });
+
+// Unique sparse index on shiprocket.shipmentId to prevent duplicate shipments
+orderSchema.index({ 'shiprocket.shipmentId': 1 }, { unique: true, sparse: true });
 
 // Virtual for order number
 orderSchema.virtual('orderNumber').get(function() {

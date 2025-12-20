@@ -95,9 +95,12 @@ const autoCreateShipment = async (order, options = {}) => {
       return { alreadyExists: true, shipmentId: order.shiprocket.shipmentId };
     }
 
-    // Check if order is paid
-    if (order.payment?.status !== 'paid') {
-      logger.warn('Cannot create shipment for unpaid order:', order._id);
+    // Check if order is paid or COD
+    const isCOD = order.payment?.method === 'cod';
+    const isPaid = order.payment?.status === 'paid';
+    
+    if (!isCOD && !isPaid) {
+      logger.warn('Cannot create shipment for unpaid non-COD order:', order._id);
       return null;
     }
 
@@ -148,7 +151,7 @@ const autoCreateShipment = async (order, options = {}) => {
       billingPhone: phone,
       shippingIsBilling: true,
       orderItems: orderItems,
-      paymentMethod: 'Prepaid', // Since we only create after payment is confirmed
+      paymentMethod: isCOD ? 'COD' : 'Prepaid',
       subTotal: orderType === 'custom' ? order.price : order.total,
       length: dims.length,
       breadth: dims.breadth,

@@ -172,6 +172,12 @@ const createOrder = async (req, res, next) => {
       }
     }
 
+    // Mark COD orders as confirmed automatically
+    if (paymentMethod === 'cod') {
+      order.status = 'confirmed';
+      order.payment.status = 'pending';
+    }
+
     await order.save();
 
     logger.info('Order created:', { orderId: order._id, userId, total });

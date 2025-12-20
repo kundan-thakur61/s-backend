@@ -112,10 +112,13 @@ const createShipment = async (req, res, next) => {
 
     await order.save();
 
-    logger.info('Shiprocket shipment created:', {
+    // Verify the save persisted
+    const savedOrder = await Order.findById(orderId);
+    logger.info('Shiprocket shipment created and saved:', {
       orderId,
       orderType,
       shipmentId: shiprocketResponse.shipment_id,
+      savedShipmentId: savedOrder?.shiprocket?.shipmentId,
       adminId: req.user.id
     });
 
@@ -246,6 +249,11 @@ const getRecommendedCouriers = async (req, res, next) => {
     }
 
     if (!order.shiprocket?.shipmentId) {
+      logger.warn('getRecommendedCouriers: Shipment not created yet', {
+        orderId,
+        orderType,
+        shiprocket: order.shiprocket
+      });
       return res.status(400).json({
         success: false,
         message: 'Shipment not created yet'
@@ -269,6 +277,13 @@ const getRecommendedCouriers = async (req, res, next) => {
       }
     });
   } catch (error) {
+    if (error.response) {
+      // Propagate Shiprocket API error status and message
+      return res.status(error.response.status).json({
+        success: false,
+        message: error.response.data?.message || 'Shiprocket API error'
+      });
+    }
     logger.error('Failed to get recommended couriers:', error);
     next(error);
   }
