@@ -2,6 +2,7 @@ const Order = require('../models/Order');
 const CustomOrder = require('../models/CustomOrder');
 const shiprocketService = require('../utils/shiprocket');
 const logger = require('../utils/logger');
+const crypto = require('crypto');
 
 /**
  * Create shipment in Shiprocket for an order
@@ -263,7 +264,8 @@ const getRecommendedCouriers = async (req, res, next) => {
           estimatedDeliveryDays: c.estimated_delivery_days,
           rating: c.rating,
           etd: c.etd
-        }))
+        })),
+        shipmentId: order.shiprocket.shipmentId
       }
     });
   } catch (error) {
@@ -579,8 +581,57 @@ const generateManifest = async (req, res, next) => {
  */
 const handleWebhook = async (req, res, next) => {
   try {
-    const webhookData = req.body;
-    
+    // Support raw body (from express.raw) for signature verification.
+    // If raw buffer is present, verify HMAC-SHA256 using
+    // process.env.SHIPROCKET_WEBHOOK_SECRET and then parse JSON.
+    let webhookData;
+    const rawBody = req.body;
+
+    if (Buffer.isBuffer(rawBody)) {
+      const secret = process.env.SHIPROCKET_WEBHOOK_SECRET;
+      const sigHeader = (req.get('x-shiprocket-signature') || req.get('x-signature') || req.get('x-shiprocket-hmac') || req.get('x-hub-signature-256') || req.get('signature') || '').toString();
+
+      if (secret) {
+        if (!sigHeader) {
+          logger.warn('Missing Shiprocket signature header');
+          return res.status(401).json({ success: false, message: 'Missing signature header' });
+        }
+
+        // Normalize header (remove sha256= prefix if present)
+        let received = sigHeader;
+        if (received.startsWith('sha256=')) received = received.slice(7);
+
+        const expectedHex = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+        const expectedBase64 = crypto.createHmac('sha256', secret).update(rawBody).digest('base64');
+
+        const receivedBuf = Buffer.from(received, 'utf8');
+        const expectedHexBuf = Buffer.from(expectedHex, 'utf8');
+        const expectedBase64Buf = Buffer.from(expectedBase64, 'utf8');
+
+        let verified = false;
+        try {
+          if (receivedBuf.length === expectedHexBuf.length && crypto.timingSafeEqual(receivedBuf, expectedHexBuf)) verified = true;
+          else if (receivedBuf.length === expectedBase64Buf.length && crypto.timingSafeEqual(receivedBuf, expectedBase64Buf)) verified = true;
+        } catch (e) {
+          verified = false;
+        }
+
+        if (!verified) {
+          logger.warn('Invalid Shiprocket webhook signature');
+          return res.status(401).json({ success: false, message: 'Invalid signature' });
+        }
+      } else {
+        logger.error('SHIPROCKET_WEBHOOK_SECRET not configured; rejecting webhook');
+        return res.status(500).json({ success: false, message: 'Server misconfiguration: SHIPROCKET_WEBHOOK_SECRET not set' });
+      }
+
+      // Parse JSON after successful verification (or if secret absent)
+      webhookData = rawBody.length ? JSON.parse(rawBody.toString('utf8')) : {};
+    } else {
+      // Fallback if body already parsed by other middleware
+      webhookData = req.body;
+    }
+
     logger.info('Shiprocket webhook received:', webhookData);
 
     // Extract order ID from webhook (format: ORD-xxxxx or CUST-xxxxx)

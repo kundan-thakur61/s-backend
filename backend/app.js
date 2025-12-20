@@ -129,7 +129,7 @@ app.use('/api/webhooks', webhookRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/mobile', mobileRoutes);
 app.use('/api/collections', collectionRoutes);
-app.use('/api/logistics', shiprocketRoutes);
+app.use('/api/shiprocket', shiprocketRoutes);
 
 
 
