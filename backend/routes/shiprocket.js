@@ -4,23 +4,10 @@ const router = express.Router();
 
 const Order = require('../models/Order');
 const CustomOrder = require('../models/CustomOrder');
-const { authMiddleware } = require('../middleware/authMiddleware');
+const { getShiprocketToken } = require('../services/shiprocketService'); // Use cached token service
+const { handleShiprocketWebhook } = require('../controllers/shiprocketWebhookController');
 
-// Helper function to get Shiprocket Token
-// In a high-traffic production app, you should cache this token (e.g., in Redis or a variable) 
-// so you don't login on every single request. The token is usually valid for 10 days.
-const getShiprocketToken = async () => {
-  try {
-    const response = await axios.post('https://apiv2.shiprocket.in/v1/external/auth/login', {
-      email: process.env.SHIPROCKET_EMAIL,
-      password: process.env.SHIPROCKET_PASSWORD
-    });
-    return response.data.token;
-  } catch (error) {
-    console.error("Shiprocket Auth Error:", error.response?.data || error.message);
-    throw new Error("Failed to authenticate with Shiprocket");
-  }
-};
+const { authMiddleware } = require('../middleware/authMiddleware');
 
 router.post('/create-shipment', authMiddleware, async (req, res) => {
   try {
@@ -103,7 +90,7 @@ router.post('/create-shipment', authMiddleware, async (req, res) => {
     })) : []);
 
     const shipmentPayload = {
-      order_id: orderId || req.body.order_id || `ORD-${Date.now()}`,
+      order_id: orderId ? `${orderId}-${Date.now()}` : (req.body.order_id || `ORD-${Date.now()}`),
       order_date: formattedDate,
       pickup_location: pickupLocation || "Primary",
       billing_customer_name: firstName,
@@ -146,10 +133,10 @@ router.post('/create-shipment', authMiddleware, async (req, res) => {
     console.log("Shiprocket Response:", response.data);
 
     // Check for logical errors from Shiprocket (even if status is 200)
-    if (!response.data.shipment_id) {
+    if (!response.data.shipment_id || response.data.status === 'CANCELED') {
       return res.status(400).json({
         success: false,
-        message: response.data.message || "Shipment creation failed",
+        message: response.data.message || "Shipment creation failed or returned canceled status",
         details: response.data
       });
     }
@@ -419,8 +406,10 @@ router.post('/request-pickup', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: "shipment_id required. Please create shipment first." });
     }
 
+    const shipmentIds = Array.isArray(shipmentId) ? shipmentId : [shipmentId];
+
     const response = await axios.post('https://apiv2.shiprocket.in/v1/external/courier/generate/pickup', 
-      { shipment_id: [shipmentId] },
+      { shipment_id: shipmentIds },
       { headers: { 'Authorization': `Bearer ${token}` } }
     );
 
@@ -429,7 +418,8 @@ router.post('/request-pickup', authMiddleware, async (req, res) => {
     const errorMsg = error.response?.data || error.message;
     console.error("Request Pickup Failed:", JSON.stringify(errorMsg, null, 2));
 
-    if (errorMsg && (errorMsg.message === 'Awb not Assigned' || errorMsg.message === 'AWB not assigned')) {
+    const msg = errorMsg?.message || '';
+    if (msg.toLowerCase().includes('awb not assigned')) {
       return res.status(400).json({ 
         success: false, 
         error: "AWB not assigned. Please 'Assign Courier' to this shipment first." 
@@ -456,8 +446,10 @@ router.post('/generate-label', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: "shipment_id required. Please create shipment first." });
     }
 
+    const shipmentIds = Array.isArray(shipmentId) ? shipmentId : [shipmentId];
+
     const response = await axios.post('https://apiv2.shiprocket.in/v1/external/courier/generate/label', 
-      { shipment_id: [shipmentId] },
+      { shipment_id: shipmentIds },
       { headers: { 'Authorization': `Bearer ${token}` } }
     );
 
@@ -466,7 +458,8 @@ router.post('/generate-label', authMiddleware, async (req, res) => {
     const errorMsg = error.response?.data || error.message;
     console.error("Generate Label Failed:", JSON.stringify(errorMsg, null, 2));
 
-    if (errorMsg && (errorMsg.message === 'Awb not Assigned' || errorMsg.message === 'AWB not assigned')) {
+    const msg = errorMsg?.message || '';
+    if (msg.toLowerCase().includes('awb not assigned')) {
       return res.status(400).json({ 
         success: false, 
         error: "AWB not assigned. Please 'Assign Courier' to this shipment first." 
@@ -493,8 +486,10 @@ router.post('/generate-manifest', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: "shipment_id required. Please create shipment first." });
     }
 
+    const shipmentIds = Array.isArray(shipmentId) ? shipmentId : [shipmentId];
+
     const response = await axios.post('https://apiv2.shiprocket.in/v1/external/manifests/generate', 
-      { shipment_id: [shipmentId] },
+      { shipment_id: shipmentIds },
       { headers: { 'Authorization': `Bearer ${token}` } }
     );
 
@@ -503,7 +498,8 @@ router.post('/generate-manifest', authMiddleware, async (req, res) => {
     const errorMsg = error.response?.data || error.message;
     console.error("Generate Manifest Failed:", JSON.stringify(errorMsg, null, 2));
 
-    if (errorMsg && (errorMsg.message === 'Awb not Assigned' || errorMsg.message === 'AWB not assigned')) {
+    const msg = errorMsg?.message || '';
+    if (msg.toLowerCase().includes('awb not assigned')) {
       return res.status(400).json({ 
         success: false, 
         error: "AWB not assigned. Please 'Assign Courier' to this shipment first." 
@@ -543,5 +539,17 @@ router.post('/cancel-shipment', authMiddleware, async (req, res) => {
     res.status(error.response?.status || 500).json({ success: false, error: errorMsg });
   }
 });
+
+// Shiprocket Webhook Endpoint
+// This route is public and does not use authMiddleware.
+// Security is handled by checking the x-api-key header inside the controller.
+// GET route for testing endpoint availability (e.g., via browser)
+router.get('/webhook', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Shiprocket webhook endpoint is active'
+  });
+});
+router.post('/webhook', handleShiprocketWebhook);
 
 module.exports = router;
