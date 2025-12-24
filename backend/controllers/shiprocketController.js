@@ -10,6 +10,7 @@ const crypto = require('crypto');
  */
 const createShipment = async (req, res, next) => {
   try {
+    console.log('[Shiprocket] Processing createShipment (v3). Request Body:', JSON.stringify(req.body, null, 2));
     const { orderId, orderType = 'regular', pickupLocation, dimensions, weight } = req.body;
 
     // Get order details based on type
@@ -42,9 +43,17 @@ const createShipment = async (req, res, next) => {
     // Prepare order items for Shiprocket
     let orderItems;
     if (orderType === 'custom') {
+      const rawSku = order.variant?.sku || `CUSTOM-${orderId}`;
+      let sku = String(rawSku).trim();
+      
+      if (sku.length > 50) {
+        console.log(`[Shiprocket] Truncating Custom SKU from ${sku.length} chars to 40 chars`);
+        sku = sku.slice(-40);
+      }
+
       orderItems = [{
         name: `Custom ${order.designData?.modelName || 'Mobile Cover'}`,
-        sku: order.variant?.sku || `CUSTOM-${orderId}`,
+        sku: sku,
         units: order.quantity || 1,
         selling_price: order.price,
         discount: 0,
@@ -52,15 +61,28 @@ const createShipment = async (req, res, next) => {
         hsn: 392690 // HSN code for plastic articles
       }];
     } else {
-      orderItems = order.items.map(item => ({
-        name: item.title || 'Mobile Cover',
-        sku: item.variantId?.toString() || 'SKU-NA',
-        units: item.quantity,
-        selling_price: item.price,
-        discount: 0,
-        tax: 0,
-        hsn: 392690
-      }));
+      orderItems = order.items.map(item => {
+        // Prefer item.sku if available, otherwise fallback to IDs
+        const rawSku = item.sku || item.variantId?.toString() || item.productId?.toString() || 'SKU-NA';
+        
+        // Shiprocket limit is 50 chars. Ensure we truncate if longer.
+        let sku = String(rawSku).trim();
+        
+        if (sku.length > 50) {
+          console.log(`[Shiprocket] Truncating SKU from ${sku.length} chars to fit limit`);
+          sku = sku.slice(-40);
+        }
+
+        return {
+          name: item.title || 'Mobile Cover',
+          sku: sku,
+          units: item.quantity,
+          selling_price: item.price,
+          discount: 0,
+          tax: 0,
+          hsn: 392690
+        };
+      });
     }
 
     // Split customer name
@@ -97,6 +119,9 @@ const createShipment = async (req, res, next) => {
       height: dimensions?.height || 2,
       weight: weight || 0.15
     };
+
+    // Log the constructed data to verify SKU truncation before sending
+    console.log('[Shiprocket] Sending Order Data to Service:', JSON.stringify(shiprocketOrderData, null, 2));
 
     // Create order in Shiprocket
     const shiprocketResponse = await shiprocketService.createOrder(shiprocketOrderData);

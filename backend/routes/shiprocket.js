@@ -71,23 +71,76 @@ router.post('/create-shipment', authMiddleware, async (req, res) => {
     const firstName = nameParts[0];
     const lastName = nameParts.slice(1).join(' ') || ".";
 
-    const items = dbOrder ? dbOrder.items.map(item => ({
-      name: item.title || item.name || "Product",
-      sku: item.sku || item.productId || "sku-123",
-      units: item.quantity,
-      selling_price: parseInt(item.price),
-      discount: 0,
-      tax: 0,
-      hsn: 0
-    })) : (req.body.items ? req.body.items.map(item => ({
-      name: item.name,
-      sku: item.sku || "sku-123",
-      units: item.quantity,
-      selling_price: parseInt(item.price),
-      discount: 0,
-      tax: 0,
-      hsn: 0
-    })) : []);
+    const paymentMethod = (dbOrder && dbOrder.payment && dbOrder.payment.method === 'cod') ? "COD" : "Prepaid";
+
+    let items = [];
+    if (dbOrder && Array.isArray(dbOrder.items) && dbOrder.items.length) {
+      items = dbOrder.items.map(item => {
+        // Prefer item.sku if available, otherwise fallback to IDs
+        const rawSku = item.sku || item.productId || 'SKU-NA';
+
+        // Shiprocket limit is 50 chars. Ensure we truncate if longer.
+        let sku = String(rawSku).trim();
+
+        if (sku.length > 50) {
+          console.log(`[Shiprocket] Truncating SKU from ${sku.length} chars to fit limit`);
+          sku = sku.slice(-40);
+        }
+
+        return {
+          name: item.title || item.name || "Product",
+          sku: sku,
+          units: item.quantity,
+          selling_price: parseInt(item.price),
+          discount: 0,
+          tax: 0,
+          hsn: 0
+        };
+      });
+    } else if (dbOrder && orderType === 'custom') {
+      const customPrice = dbOrder.price || (dbOrder.variant && dbOrder.variant.price) || 0;
+      let sku = (dbOrder.variant && dbOrder.variant.sku) || (dbOrder.productId ? dbOrder.productId.toString() : "sku-123");
+
+      // Shiprocket limit is 50 chars. Ensure we truncate if longer.
+      if (sku.length > 50) {
+        console.log(`[Shiprocket] Truncating Custom SKU from ${sku.length} chars to fit limit`);
+        sku = sku.slice(-40);
+      }
+
+      items = [{
+        name: "Custom Product",
+        sku: sku,
+        units: dbOrder.quantity || 1,
+        selling_price: parseInt(customPrice),
+        discount: 0,
+        tax: 0,
+        hsn: 0
+      }];
+    } else if (req.body.items) {
+      items = req.body.items.map(item => ({
+        name: item.name,
+        sku: item.sku || "sku-123",
+        units: item.quantity,
+        selling_price: parseInt(item.price),
+        discount: 0,
+        tax: 0,
+        hsn: 0
+      }));
+    }
+
+    if (!items.length) {
+      items = [{
+        name: "Product",
+        sku: "sku-123",
+        units: 1,
+        selling_price: parseInt(req.body.totalAmount || 0) || 0,
+        discount: 0,
+        tax: 0,
+        hsn: 0
+      }];
+    }
+
+    const subTotal = dbOrder ? (dbOrder.total || (dbOrder.price && dbOrder.quantity ? dbOrder.price * dbOrder.quantity : 0)) : (req.body.totalAmount || 0);
 
     const shipmentPayload = {
       order_id: orderId ? `${orderId}-${Date.now()}` : (req.body.order_id || `ORD-${Date.now()}`),
@@ -104,12 +157,12 @@ router.post('/create-shipment', authMiddleware, async (req, res) => {
       billing_phone: address.phone || "9999999999",
       shipping_is_billing: true,
       order_items: items,
-      payment_method: (dbOrder && dbOrder.paymentMethod === 'cod') ? "COD" : "Prepaid",
+      payment_method: paymentMethod,
       shipping_charges: 0,
       giftwrap_charges: 0,
       transaction_charges: 0,
       total_discount: 0,
-      sub_total: dbOrder ? dbOrder.total : (req.body.totalAmount || 0),
+      sub_total: subTotal,
       length: (dimensions && dimensions.length) || req.body.length || 15,
       breadth: (dimensions && dimensions.breadth) || req.body.breadth || 10,
       height: (dimensions && dimensions.height) || req.body.height || 2,

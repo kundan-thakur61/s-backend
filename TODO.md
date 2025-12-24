@@ -1,9 +1,25 @@
-# Fix Payment Redirect Issue
+# TODO - Shiprocket SKU Fix
 
-## Tasks
-- [x] Update Razorpay payment success handler to use window.location.href instead of navigate()
-- [x] Update COD success navigation for consistency
-- [ ] Test the fix to ensure proper redirection after payment
+## Issue
+- Shiprocket API returns 422 Unprocessable Entity error
+- Error: "Product SKU should be between 1 to 50 characters"
+- Long SKUs from custom orders were exceeding the 50 character limit
 
-## Context
-The issue is that the page is not redirecting to "order-success" after successful online payment. This is likely due to React Router's navigate() function not working properly in mobile webviews or when Razorpay opens in a different context. Using window.location.href will ensure reliable navigation across all devices.
+## Solution Applied
+- Added SKU truncation logic in `backend/routes/shiprocket.js`
+- For regular orders: Truncate SKUs longer than 50 chars to last 40 chars
+- For custom orders: Truncate SKUs longer than 50 chars to last 40 chars
+- Added logging when truncation occurs
+
+## Files Modified
+- `backend/routes/shiprocket.js`: Added SKU validation and truncation for both regular and custom order items
+
+## Testing
+- [ ] Test create-shipment endpoint with long SKU
+- [ ] Verify Shiprocket accepts the truncated SKU
+- [ ] Confirm shipment creation succeeds
+
+## Status
+- [x] Code changes applied
+- [ ] Testing completed
+- [ ] Issue resolved
