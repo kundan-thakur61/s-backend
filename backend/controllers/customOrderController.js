@@ -35,7 +35,7 @@ const createCustomOrder = async (req, res, next) => {
       }
     }
 
-    // Calculate price (base price + customization fee)
+    // Calculate price (base price only; any promos already reflected in variant.price)
     // Priority: variant.price -> product default variant price -> explicit price in body
     let basePrice = 0;
     if (variant && typeof variant.price === 'number') {
@@ -51,8 +51,7 @@ const createCustomOrder = async (req, res, next) => {
         message: 'Unable to determine base price: provide productId, variant.price, or price in payload'
       });
     }
-    const customizationFee = 150; // Fixed customization fee
-    const totalPrice = (basePrice * quantity) + customizationFee;
+    const totalPrice = basePrice * quantity;
 
     // normalize imageUrls — accept array of strings or objects
     const normalizedImageUrls = (Array.isArray(imageUrls) ? imageUrls : []).map((img) => {
