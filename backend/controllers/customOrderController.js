@@ -213,6 +213,9 @@ const verifyCustomPayment = async (req, res, next) => {
     customOrder.payment.razorpaySignature = razorpay_signature;
     customOrder.payment.status = 'paid';
     customOrder.payment.paidAt = new Date();
+    if (customOrder.status === 'pending') {
+      customOrder.status = 'approved';
+    }
 
     await customOrder.save();
 

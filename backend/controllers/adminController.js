@@ -25,7 +25,9 @@ const formatCustomOrderSummary = (order) => ({
   },
   price: order.price,
   status: order.status,
-  createdAt: order.createdAt
+  createdAt: order.createdAt,
+  imageUrl: order.mockupUrl || order.imageUrls?.[0]?.original?.url || order.imageUrls?.[0] || null,
+  paymentStatus: order.payment?.status || 'pending'
 });
 
 const numberField = (fieldPath) => ({
