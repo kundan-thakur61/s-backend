@@ -73,3 +73,6 @@ temp/
 
 # MongoDB Memory Server
 .mongodb-memory-server/
+*.test.js
+debug-*.js
+IMAGEFIX_SUMMARY.md
