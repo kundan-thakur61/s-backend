@@ -27,15 +27,15 @@ const orderValidation = [
   body('items').isArray({ min: 1 }).withMessage('Order must contain at least one item'),
   // Accept product/variant either as a MongoId string or an object containing `_id`
   body('items.*.productId').custom((value) => {
-    // Allow either a Mongo ObjectId string, an object with _id, or custom product ids starting with 'custom_'
-    const isValidString = typeof value === 'string' && (/^[a-fA-F0-9]{24}$/.test(value) || /^custom_/.test(value));
+    // Allow either a Mongo ObjectId string, custom product ids (custom_, cc_, etc), or an object with _id
+    const isValidString = typeof value === 'string' && (/^[a-fA-F0-9]{24}$/.test(value) || /^[a-z]+_/.test(value));
     const isObjectWithId = value && typeof value === 'object' && typeof value._id === 'string' && /^[a-fA-F0-9]{24}$/.test(value._id);
     if (isValidString || isObjectWithId) return true;
     throw new Error('Invalid product ID');
   }),
   body('items.*.variantId').custom((value) => {
-    // Allow either a Mongo ObjectId string, an object with _id, or custom variant ids (e.g., 'v_...' or 'custom_...')
-    const isValidString = typeof value === 'string' && (/^[a-fA-F0-9]{24}$/i.test(value) || /^v_/.test(value) || /^custom_/.test(value));
+    // Allow either a Mongo ObjectId string, custom variant ids (v_, custom_, cc_, etc), or an object with _id
+    const isValidString = typeof value === 'string' && (/^[a-fA-F0-9]{24}$/i.test(value) || /^[a-z]+_/.test(value));
     const isObjectWithId = value && typeof value === 'object' && typeof value._id === 'string' && /^[a-fA-F0-9]{24}$/i.test(value._id);
     if (isValidString || isObjectWithId) return true;
     throw new Error('Invalid variant ID');

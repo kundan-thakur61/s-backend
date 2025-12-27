@@ -47,10 +47,27 @@ if (process.env.NODE_ENV !== 'test') {
 
   // Socket.io setup
   const socketio = require('socket.io');
+  const defaultAllowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'https://coverghar.in',
+    'https://www.coverghar.in'
+  ];
+  const envAllowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map(origin => origin.trim())
+    .filter(Boolean);
+  const socketIOAllowedOrigins = Array.from(new Set([
+    ...defaultAllowedOrigins,
+    ...envAllowedOrigins,
+    process.env.FRONTEND_URL
+  ])).filter(Boolean);
+
   io = socketio(server, {
     cors: {
-      origin: process.env.FRONTEND_URL,
-      methods: ['GET', 'POST']
+      origin: socketIOAllowedOrigins,
+      methods: ['GET', 'POST'],
+      credentials: true
     }
   });
 

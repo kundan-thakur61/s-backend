@@ -65,20 +65,48 @@ const createOrder = async (req, res, next) => {
       });
     }
 
+    // Validate shippingAddress
+    if (!shippingAddress) {
+      return res.status(400).json({
+        success: false,
+        message: 'Shipping address is required'
+      });
+    }
+
+    const requiredAddressFields = ['name', 'phone', 'address1', 'city', 'state', 'postalCode'];
+    const missingFields = requiredAddressFields.filter(field => !shippingAddress[field]);
+    if (missingFields.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Missing required address fields: ${missingFields.join(', ')}`
+      });
+    }
+
     // Process items and calculate total
     let total = 0;
     const processedItems = [];
 
     for (const item of items) {
-      // support custom cart items with productId like 'custom_...'
-      if (typeof item.productId === 'string' && item.productId.startsWith('custom_')) {
-        // For custom items we don't require a DB product — the client should send necessary fields (product, variant, price, image)
+      // support custom cart items - check both item.productId and item.product._id
+      const itemProductId = item.productId || (item.product && (item.product._id || item.product.id));
+      
+      // Check if this is a custom item (not a MongoDB ObjectId)
+      const isCustomProduct = typeof itemProductId === 'string' && !/^[a-fA-F0-9]{24}$/.test(itemProductId);
+      
+      if (isCustomProduct) {
+        // For custom items (custom_*, cc_*, etc.) we don't require a DB product — the client should send necessary fields
         const price = (item.price !== undefined && typeof item.price === 'number') ? item.price : (item.variant?.price || 0);
         const qty = item.quantity || 1;
         total += price * qty;
 
+        // Ensure image is a string URL, handling Cloudinary objects if passed
+        let image = item.image || item.product?.design?.imgSrc || item.product?.images?.[0] || item.variant?.images?.[0] || '';
+        if (image && typeof image === 'object') {
+          image = image.secure_url || image.url || image.path || '';
+        }
+
         processedItems.push({
-          productId: item.productId,
+          productId: itemProductId,
           variantId: item.variantId || (item.variant && item.variant._id) || null,
           title: item.title || item.product?.title || 'Custom product',
           brand: item.product?.brand || item.product?.design?.meta?.company || null,
@@ -86,17 +114,18 @@ const createOrder = async (req, res, next) => {
           color: item.variant?.color || item.variant?.name || null,
           price: price,
           quantity: qty,
-          image: item.product?.design?.imgSrc || item.product?.images?.[0] || item.variant?.images?.[0]?.url || ''
+          image: image,
+          designMeta: item.designMeta || item.product?.design?.meta || null
         });
 
         continue;
       }
 
-      const product = await Product.findById(item.productId);
+      const product = await Product.findById(itemProductId);
       if (!product) {
-        return res.status(404).json({
+        return res.status(400).json({
           success: false,
-          message: `Product ${item.productId} not found`
+          message: `Product ${itemProductId} not found`
         });
       }
 
@@ -112,7 +141,7 @@ const createOrder = async (req, res, next) => {
       total += itemTotal;
 
       processedItems.push({
-        productId: item.productId,
+        productId: itemProductId,
         variantId: item.variantId,
         title: product.title,
         brand: product.brand,
@@ -194,6 +223,11 @@ const createOrder = async (req, res, next) => {
       }
     });
   } catch (error) {
+    logger.error('Error creating order:', { 
+      message: error.message, 
+      stack: error.stack,
+      requestBody: JSON.stringify(req.body).substring(0, 500)
+    });
     next(error);
   }
 };
@@ -356,7 +390,7 @@ const getMyOrders = async (req, res, next) => {
       .sort('-createdAt')
       .skip(skip)
       .limit(limitNum)
-      .populate('items.productId', 'title brand model');
+      .populate('items.productId', 'title brand model variants.images variants.color variants.price');
 
     res.json({
       success: true,
@@ -385,7 +419,7 @@ const getOrder = async (req, res, next) => {
     const order = await Order.findOne({
       _id: req.params.id,
       userId: req.user.id
-    }).populate('items.productId', 'title brand model');
+    }).populate('items.productId', 'title brand model variants.images variants.color variants.price');
 
     if (!order) {
       return res.status(404).json({
@@ -478,12 +512,31 @@ const getAllOrders = async (req, res, next) => {
     const skip = (pageNum - 1) * limitNum;
 
     const totalCount = await Order.countDocuments(query);
-    const orders = await Order.find(query)
+    let orders = await Order.find(query)
       .sort('-createdAt')
       .skip(skip)
       .limit(limitNum)
       .populate('userId', 'name email')
-      .populate('items.productId', 'title brand model');
+      .populate('items.productId', 'title brand model variants.images variants.color variants.price');
+
+    // Ensure all items have images - fallback to product variant images if item.image is missing
+    orders = orders.map(order => {
+      const orderObj = order.toObject();
+      orderObj.items = orderObj.items.map(item => {
+        // If item.image is missing or empty, try to get it from populated product data
+        if (!item.image && item.productId && typeof item.productId === 'object') {
+          const variant = item.productId.variants?.find(v => v._id?.toString() === item.variantId?.toString());
+          if (variant?.images && variant.images.length > 0) {
+            const primaryImage = variant.images.find(img => img.isPrimary);
+            // Handle both string and object image formats
+            const imageUrl = primaryImage?.url || primaryImage || variant.images[0]?.url || variant.images[0];
+            item.image = typeof imageUrl === 'string' ? imageUrl : (imageUrl?.url || imageUrl?.secure_url || imageUrl?.path || '');
+          }
+        }
+        return item;
+      });
+      return orderObj;
+    });
 
     res.json({
       success: true,

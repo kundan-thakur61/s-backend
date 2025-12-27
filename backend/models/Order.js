@@ -31,7 +31,8 @@ const orderSchema = new mongoose.Schema({
       required: true,
       min: 1
     },
-    image: String
+    image: String,
+    designMeta: mongoose.Schema.Types.Mixed
   }],
   total: {
     type: Number,
