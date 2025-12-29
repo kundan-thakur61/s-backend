@@ -25,22 +25,8 @@ const {
 // Validation rules
 const orderValidation = [
   body('items').isArray({ min: 1 }).withMessage('Order must contain at least one item'),
-  // Accept product/variant either as a MongoId string or an object containing `_id`
-  body('items.*.productId').custom((value) => {
-    // Allow either a Mongo ObjectId string, custom product ids (custom_, cc_, etc), or an object with _id
-    const isValidString = typeof value === 'string' && (/^[a-fA-F0-9]{24}$/.test(value) || /^[a-z]+_/.test(value));
-    const isObjectWithId = value && typeof value === 'object' && typeof value._id === 'string' && /^[a-fA-F0-9]{24}$/.test(value._id);
-    if (isValidString || isObjectWithId) return true;
-    throw new Error('Invalid product ID');
-  }),
-  body('items.*.variantId').custom((value) => {
-    // Allow either a Mongo ObjectId string, custom variant ids (v_, custom_, cc_, etc), or an object with _id
-    const isValidString = typeof value === 'string' && (/^[a-fA-F0-9]{24}$/i.test(value) || /^[a-z]+_/.test(value));
-    const isObjectWithId = value && typeof value === 'object' && typeof value._id === 'string' && /^[a-fA-F0-9]{24}$/i.test(value._id);
-    if (isValidString || isObjectWithId) return true;
-    throw new Error('Invalid variant ID');
-  }),
   body('items.*.quantity').isInt({ min: 1 }).withMessage('Quantity must be at least 1'),
+  body('items.*.price').optional().isFloat({ min: 0 }).withMessage('Price must be a positive number'),
   body('shippingAddress.name').trim().isLength({ min: 2, max: 50 }).withMessage('Name is required'),
   body('shippingAddress.phone').matches(/^[0-9]{7,15}$/).withMessage('Phone must be 7-15 digits'),
   body('shippingAddress.address1').trim().isLength({ min: 5 }).withMessage('Address is required'),

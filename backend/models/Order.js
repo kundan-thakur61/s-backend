@@ -20,6 +20,7 @@ const orderSchema = new mongoose.Schema({
     title: String,
     brand: String,
     model: String,
+    material: String,
     color: String,
     price: {
       type: Number,

@@ -82,7 +82,12 @@ const customOrderSchema = new mongoose.Schema({
         x: Number,
         y: Number
       }
-    }
+    },
+    companyId: String,
+    companyName: String,
+    modelId: String,
+    modelName: String,
+    material: String
   },
   shippingAddress: {
     name: { type: String, required: true },

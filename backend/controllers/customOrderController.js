@@ -303,6 +303,31 @@ const getCustomOrder = async (req, res, next) => {
 };
 
 /**
+ * Get custom order for public access (Order Success page)
+ * GET /api/custom/order/:id
+ */
+const getCustomOrderPublic = async (req, res, next) => {
+  try {
+    const customOrder = await CustomOrder.findById(req.params.id)
+      .populate('productId', 'title brand model mockupTemplateUrl');
+
+    if (!customOrder) {
+      return res.status(404).json({
+        success: false,
+        message: 'Custom order not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: { customOrder }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * Get all custom orders (Admin only)
  * GET /api/admin/custom-orders
  */
@@ -538,6 +563,7 @@ module.exports = {
   verifyCustomPayment,
   getMyCustomOrders,
   getCustomOrder,
+  getCustomOrderPublic,
   getAllCustomOrders,
   approveCustomOrder,
   rejectCustomOrder,

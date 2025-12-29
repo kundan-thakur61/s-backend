@@ -8,7 +8,8 @@ const {
   createCustomPayment,
   verifyCustomPayment,
   getMyCustomOrders,
-  getCustomOrder
+  getCustomOrder,
+  getCustomOrderPublic
 } = require('../controllers/customOrderController');
 
 const { authMiddleware } = require('../middleware/authMiddleware');
@@ -90,9 +91,12 @@ router.get('/orders',
   getMyCustomOrders
 );
 
-router.get('/orders/:id', 
+router.get('/orders/:id',
   authMiddleware,
   getCustomOrder
 );
+
+// Public route for order success page (no auth required)
+router.get('/order/:id', getCustomOrderPublic);
 
 module.exports = router;

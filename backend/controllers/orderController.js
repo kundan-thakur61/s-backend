@@ -109,13 +109,14 @@ const createOrder = async (req, res, next) => {
           productId: itemProductId,
           variantId: item.variantId || (item.variant && item.variant._id) || null,
           title: item.title || item.product?.title || 'Custom product',
-          brand: item.product?.brand || item.product?.design?.meta?.company || null,
-          model: item.product?.model || item.product?.design?.meta?.model || null,
+          brand: item.brand || item.product?.brand || item.product?.design?.meta?.company || item.designData?.companyName || null,
+          model: item.model || item.product?.model || item.product?.design?.meta?.model || item.designData?.modelName || null,
           color: item.variant?.color || item.variant?.name || null,
           price: price,
           quantity: qty,
           image: image,
-          designMeta: item.designMeta || item.product?.design?.meta || null
+          designMeta: item.designMeta || item.designData || item.product?.design?.meta || null,
+          material: item.material || item.product?.design?.meta?.material || item.variant?.name || item.variant?.color || item.designData?.material || null
         });
 
         continue;
@@ -149,7 +150,9 @@ const createOrder = async (req, res, next) => {
         color: variant.color,
         price: variant.price,
         quantity: item.quantity,
-        image: variant.images.find(img => img.isPrimary)?.url || variant.images[0]?.url
+        image: variant.images.find(img => img.isPrimary)?.url || variant.images[0]?.url,
+        designMeta: item.designMeta || item.product?.design?.meta || null,
+        material: product.type || item.designMeta?.material || item.product?.design?.meta?.material || variant.name || variant.color || null
       });
     }
 
@@ -419,7 +422,7 @@ const getOrder = async (req, res, next) => {
     const order = await Order.findOne({
       _id: req.params.id,
       userId: req.user.id
-    }).populate('items.productId', 'title brand model variants.images variants.color variants.price');
+    }).populate('items.productId', 'title brand model type variants.images variants.color variants.price');
 
     if (!order) {
       return res.status(404).json({
@@ -517,7 +520,7 @@ const getAllOrders = async (req, res, next) => {
       .skip(skip)
       .limit(limitNum)
       .populate('userId', 'name email')
-      .populate('items.productId', 'title brand model variants.images variants.color variants.price');
+      .populate('items.productId', 'title brand model type variants.images variants.color variants.price');
 
     // Ensure all items have images - fallback to product variant images if item.image is missing
     orders = orders.map(order => {

@@ -4,6 +4,14 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 const mongoose = require('mongoose');
 const logger = require('./utils/logger');
 
+// Import MongoMemoryServer for development fallback
+let MongoMemoryServer;
+try {
+  MongoMemoryServer = require('mongodb-memory-server').MongoMemoryServer;
+} catch (err) {
+  logger.warn('mongodb-memory-server not available; will not use in-memory MongoDB fallback.');
+}
+
 // Export the app from app.js and only handle DB connect + listen here
 const app = require('./app');
 
